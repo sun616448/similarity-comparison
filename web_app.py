@@ -105,6 +105,8 @@ def calculate_similarity():
         }), 500
 
 if __name__ == '__main__':
+    import os
+    port = int(os.environ.get('PORT', 5001))
     print("正在启动相似度计算器网页应用...")
-    print("请在浏览器中打开 http://localhost:5001")
-    app.run(debug=True, host='0.0.0.0', port=5001)
+    print(f"请在浏览器中打开 http://localhost:{port}")
+    app.run(debug=False, host='0.0.0.0', port=port)
