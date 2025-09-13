@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>相似度计算器</title>
+
     <style>
         * {
             box-sizing: border-box;
@@ -345,6 +346,100 @@
             text-align: center;
         }
         
+        .realtime-controls {
+            display: none;
+            margin-top: 30px;
+            padding: 25px;
+            background: #f0f8ff;
+            border-radius: 12px;
+            border: 2px solid #4facfe;
+        }
+        
+        .realtime-controls.show {
+            display: block;
+        }
+        
+        .realtime-controls h3 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.2rem;
+        }
+        
+        .realtime-weights {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 15px;
+        }
+        
+        .realtime-weight {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+        
+        .realtime-weight label {
+            display: block;
+            font-weight: 600;
+            color: #555;
+            margin-bottom: 8px;
+            text-align: center;
+            font-size: 0.9rem;
+        }
+        
+        .realtime-slider-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .realtime-slider-container input[type="range"] {
+            flex: 1;
+            height: 6px;
+            border-radius: 3px;
+            background: #e1e5e9;
+            outline: none;
+            -webkit-appearance: none;
+        }
+        
+        .realtime-slider-container input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(79, 172, 254, 0.3);
+        }
+        
+        .realtime-slider-container input[type="range"]::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 2px 4px rgba(79, 172, 254, 0.3);
+        }
+        
+        .realtime-value {
+            font-weight: 700;
+            color: #4facfe;
+            min-width: 25px;
+            text-align: center;
+            font-size: 0.9rem;
+        }
+        
+        .realtime-total {
+            text-align: center;
+            font-size: 0.9rem;
+            color: #666;
+            margin-top: 10px;
+        }
+        
         .pairs-table {
             width: 100%;
             border-collapse: collapse;
@@ -483,13 +578,46 @@
             <div class="results" id="results">
                 <!-- Results will be populated here -->
             </div>
+            
+            <div class="realtime-controls" id="realtime-controls">
+                <h3>实时调整权重</h3>
+                <div class="realtime-weights">
+                    <div class="realtime-weight">
+                        <label for="realtime-jaccard">Jaccard 1</label>
+                        <div class="realtime-slider-container">
+                            <input type="range" id="realtime-jaccard" min="0" max="1" step="0.1" value="0.0">
+                            <span class="realtime-value" id="realtime-jaccard-value">0.0</span>
+                        </div>
+                    </div>
+                    <div class="realtime-weight">
+                        <label for="realtime-jaro">Jaro-Winkler 2</label>
+                        <div class="realtime-slider-container">
+                            <input type="range" id="realtime-jaro" min="0" max="1" step="0.1" value="0.9">
+                            <span class="realtime-value" id="realtime-jaro-value">0.9</span>
+                        </div>
+                    </div>
+                    <div class="realtime-weight">
+                        <label for="realtime-acronym">Acronym 3</label>
+                        <div class="realtime-slider-container">
+                            <input type="range" id="realtime-acronym" min="0" max="1" step="0.1" value="0.1">
+                            <span class="realtime-value" id="realtime-acronym-value">0.1</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="realtime-total">总权重：<span id="realtime-total-weight">1.0</span></div>
+            </div>
         </div>
     </div>
 
     <script>
+        // Global variables for storing raw similarity data
+        let rawSimilarityData = null;
+        let isRealTimeMode = false;
+        
         // Initialize sliders and weight display
         document.addEventListener('DOMContentLoaded', function() {
             initializeWeightSliders();
+            initializeRealtimeSliders();
         });
         
         function initializeWeightSliders() {
@@ -521,6 +649,60 @@
             document.getElementById('total-weight').textContent = total.toFixed(1);
         }
         
+        function initializeRealtimeSliders() {
+            const sliders = [
+                { id: 'realtime-jaccard', valueId: 'realtime-jaccard-value' },
+                { id: 'realtime-jaro', valueId: 'realtime-jaro-value' },
+                { id: 'realtime-acronym', valueId: 'realtime-acronym-value' }
+            ];
+            
+            sliders.forEach(slider => {
+                const sliderElement = document.getElementById(slider.id);
+                const valueElement = document.getElementById(slider.valueId);
+                
+                sliderElement.addEventListener('input', function() {
+                    valueElement.textContent = this.value;
+                    updateRealtimeTotalWeight();
+                    if (rawSimilarityData) {
+                        updateResultsRealtime();
+                    }
+                });
+            });
+            
+            updateRealtimeTotalWeight();
+        }
+        
+        function updateRealtimeTotalWeight() {
+            const jaccardWeight = parseFloat(document.getElementById('realtime-jaccard').value);
+            const jaroWeight = parseFloat(document.getElementById('realtime-jaro').value);
+            const acronymWeight = parseFloat(document.getElementById('realtime-acronym').value);
+            
+            const total = jaccardWeight + jaroWeight + acronymWeight;
+            document.getElementById('realtime-total-weight').textContent = total.toFixed(1);
+        }
+        
+        function updateResultsRealtime() {
+            if (!rawSimilarityData) return;
+            
+            const jaccardWeight = parseFloat(document.getElementById('realtime-jaccard').value);
+            const jaroWeight = parseFloat(document.getElementById('realtime-jaro').value);
+            const acronymWeight = parseFloat(document.getElementById('realtime-acronym').value);
+            
+            // Update the data with new weights
+            const updatedData = {
+                ...rawSimilarityData,
+                results: rawSimilarityData.results.map(result => ({
+                    ...result,
+                    overall: (jaccardWeight * result.jaccard + 
+                             jaroWeight * result.jaro_winkler + 
+                             acronymWeight * result.acronym).toFixed(3)
+                }))
+            };
+            
+            // Re-render results with updated scores
+            displayResults(updatedData, true);
+        }
+        
         async function calculateSimilarity() {
             const stringsInput = document.getElementById('strings');
             const loadingDiv = document.getElementById('loading');
@@ -539,10 +721,11 @@
             const jaroWeight = parseFloat(document.getElementById('jaro-weight').value);
             const acronymWeight = parseFloat(document.getElementById('acronym-weight').value);
             
-            // Show loading, hide results
+            // Show loading, hide results and realtime controls
             calculateBtn.disabled = true;
             loadingDiv.style.display = 'block';
             resultsDiv.style.display = 'none';
+            document.getElementById('realtime-controls').classList.remove('show');
             
             try {
                 const response = await fetch('/calculate', {
@@ -563,7 +746,22 @@
                 if (data.error) {
                     showError(data.error);
                 } else {
+                    // Store raw data for real-time calculations
+                    rawSimilarityData = data;
+                    
+                    // Sync realtime sliders with initial weights
+                    document.getElementById('realtime-jaccard').value = jaccardWeight;
+                    document.getElementById('realtime-jaccard-value').textContent = jaccardWeight;
+                    document.getElementById('realtime-jaro').value = jaroWeight;
+                    document.getElementById('realtime-jaro-value').textContent = jaroWeight;
+                    document.getElementById('realtime-acronym').value = acronymWeight;
+                    document.getElementById('realtime-acronym-value').textContent = acronymWeight;
+                    updateRealtimeTotalWeight();
+                    
                     displayResults(data);
+                    
+                    // Show real-time controls
+                    document.getElementById('realtime-controls').classList.add('show');
                 }
                 
             } catch (error) {
@@ -580,14 +778,14 @@
             resultsDiv.style.display = 'block';
         }
         
-        function displayResults(data) {
+        function displayResults(data, isRealtime = false) {
             const resultsDiv = document.getElementById('results');
             let html = '';
             
             // Results header
             html += `
                 <div class="results-header">
-                    <h2>相似度结果</h2>
+                    <h2>相似度结果 ${isRealtime ? '<span style="color: #4facfe; font-size: 0.8em;">(实时更新)</span>' : ''}</h2>
                     <div class="results-meta">
                         已分析 ${data.total_strings} 个字符串，进行了 ${data.total_pairs} 次比较
                     </div>
@@ -612,30 +810,28 @@
                             </div>
                         </div>
                         
-                        ${result.weights ? `
                         <div class="weights-display">
                             <strong>使用的权重：</strong> 
-                            Jaccard 1：${result.weights.jaccard}，
-                            Jaro-Winkler 2：${result.weights.jaro_winkler}，
-                            Acronym 3：${result.weights.acronym}
+                            Jaccard 1：${isRealtime ? parseFloat(document.getElementById('realtime-jaccard').value) : (result.weights ? result.weights.jaccard : 0.0)}，
+                            Jaro-Winkler 2：${isRealtime ? parseFloat(document.getElementById('realtime-jaro').value) : (result.weights ? result.weights.jaro_winkler : 0.9)}，
+                            Acronym 3：${isRealtime ? parseFloat(document.getElementById('realtime-acronym').value) : (result.weights ? result.weights.acronym : 0.1)}
                         </div>
-                        ` : ''}
                         
                         <div class="scores-grid">
                             <div class="score-item">
                                 <div class="score-label">Jaccard 1 (2-字符组)</div>
                                 <div class="score-value">${result.jaccard}</div>
-                                ${result.weights ? `<div class="weight-display">× ${result.weights.jaccard}</div>` : ''}
+                                <div class="weight-display">× ${isRealtime ? parseFloat(document.getElementById('realtime-jaccard').value) : (result.weights ? result.weights.jaccard : 0.0)}</div>
                             </div>
                             <div class="score-item">
                                 <div class="score-label">Jaro-Winkler 2</div>
                                 <div class="score-value">${result.jaro_winkler}</div>
-                                ${result.weights ? `<div class="weight-display">× ${result.weights.jaro_winkler}</div>` : ''}
+                                <div class="weight-display">× ${isRealtime ? parseFloat(document.getElementById('realtime-jaro').value) : (result.weights ? result.weights.jaro_winkler : 0.9)}</div>
                             </div>
                             <div class="score-item">
                                 <div class="score-label">Acronym 3</div>
                                 <div class="score-value">${result.acronym}</div>
-                                ${result.weights ? `<div class="weight-display">× ${result.weights.acronym}</div>` : ''}
+                                <div class="weight-display">× ${isRealtime ? parseFloat(document.getElementById('realtime-acronym').value) : (result.weights ? result.weights.acronym : 0.1)}</div>
                             </div>
                             <div class="score-item overall">
                                 <div class="score-label">总体（加权）</div>
